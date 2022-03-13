@@ -54,8 +54,8 @@ public class MyTimer implements Time {
             }
             if (!paused) {
                 checkLastTime();
-                addTime(SECOND_STEP_DEFAULT);
                 print();
+                addTime(SECOND_STEP_DEFAULT);
                 runAction();
                 stepSleep();
             }
@@ -108,7 +108,10 @@ public class MyTimer implements Time {
         mAction = null;
         mStopAction = null;
         running = false;
-        resume();
+        synchronized (pauseLock) {
+            paused = false;
+            pauseLock.notifyAll(); // Unblocks thread
+        }
         mThread = null;
     }
 
