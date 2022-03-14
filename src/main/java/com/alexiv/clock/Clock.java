@@ -1,12 +1,12 @@
 package com.alexiv.clock;
 
 import com.alexiv.utils.Logger;
-import com.alexiv.utils.Time;
+import com.alexiv.utils.ITime;
 import org.jetbrains.annotations.NotNull;
 
 import static com.alexiv.utils.Constants.*;
 
-public class Clock implements Time {
+public class Clock implements ITime {
 
     private int mHours = 0;
     private int mMinute = 0;

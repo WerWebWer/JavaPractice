@@ -1,13 +1,13 @@
 package com.alexiv.timer;
 
 import com.alexiv.utils.Logger;
-import com.alexiv.utils.Time;
+import com.alexiv.utils.ITime;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import static com.alexiv.utils.Constants.*;
 
-public class MyTimer implements Time {
+public class MyTimer implements ITime {
     private static final String TAG = MyTimer.class.getName();
 
     enum Status {

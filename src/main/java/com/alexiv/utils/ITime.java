@@ -1,6 +1,6 @@
 package com.alexiv.utils;
 
-public interface Time {
+public interface ITime {
     void start();
     void pause();
     void resume();
