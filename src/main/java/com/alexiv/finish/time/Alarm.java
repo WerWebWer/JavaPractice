@@ -1,8 +1,6 @@
-package com.alexiv.finish.utils;
+package com.alexiv.finish.time;
 
-import com.alexiv.utils.Logger;
-import com.alexiv.utils.ITime;
-import com.alexiv.finish.utils.Time;
+import com.alexiv.finish.utils.Logger;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -12,50 +10,43 @@ import java.util.List;
 import static com.alexiv.finish.utils.Constants.*;
 
 public class Alarm implements ITime {
-    private static final String TAG = Alarm.class.getName();
+    private static final String TAG = Alarm.class.getSimpleName();
 
-    public enum Status {
-        RUN,
-        PAUSE,
-        STOP
-    }
+    private static final String TIME_TEXT_FORMAT = "%s [%s:%s:%s]";
 
-    private Status mStatus = Status.STOP;
+    @NotNull
+    private final List<AlarmCallback> mTimerActions = new ArrayList<>();
+    @NotNull
+    private final List<Time> mAlarms = new ArrayList<>();
+
+    private StatusTime mStatus = StatusTime.STOP;
 
     private int mHours = HOURS_DEFAULT;
     private int mMinute = MINUTE_DEFAULT;
     private int mSeconds = SECOND_DEFAULT;
 
-    public static List<Time> mAlarms = new ArrayList<>();
-
+    // region thread
     private volatile boolean running = true;
     private volatile boolean paused = false;
+    @NotNull
     private final Object pauseLock = new Object();
     @Nullable
     private Thread mThread = null;
     private final Runnable mRunnable = () -> {
         while (running) {
             synchronized (pauseLock) {
-                if (!running) { // may have changed while waiting to
-                    // synchronize on pauseLock
+                if (!running) {
                     break;
                 }
                 if (paused) {
                     try {
                         synchronized (pauseLock) {
                             pauseLock.wait();
-                            // will cause this Thread to block until
-                            // another thread calls pauseLock.notifyAll()
-                            // Note that calling wait() will
-                            // relinquish the synchronized lock that this
-                            // thread holds on pauseLock so another thread
-                            // can acquire the lock to call notifyAll()
-                            // (link with explanation below this code)
                         }
                     } catch (InterruptedException ex) {
                         break;
                     }
-                    if (!running) { // running might have changed since we paused
+                    if (!running) {
                         break;
                     }
                 }
@@ -71,22 +62,10 @@ public class Alarm implements ITime {
             }
         }
     };
-
-    public interface MyTimerActions {
-        void action(Time time);
-
-        void startAction();
-        void pauseAction();
-        void stopAction();
-
-        void endAction(); // when time is end - 0:0:0
-
-        void alarm();
-    }
-
-    private List<MyTimerActions> mTimerActions = new ArrayList<>();
+    // endregion thread
 
     public Alarm() {
+        checkTime();
     }
 
     public Alarm(int h, int m, int s) {
@@ -96,29 +75,17 @@ public class Alarm implements ITime {
         checkTime();
     }
 
-    public void addMyTimerActions(@NotNull MyTimerActions actions) {
-        mTimerActions.add(actions);
-    }
-
-    public void removeMyTimerActions(@NotNull MyTimerActions actions) {
-        mTimerActions.remove(actions);
-    }
-
-    public void clearMyTimerActions() {
-        mTimerActions.clear();
-    }
-
     @Override
     public void start() {
         Logger.d(TAG, "start");
-        if (mStatus == Status.RUN) {
+        if (mStatus == StatusTime.RUN) {
             Logger.d(TAG, "already started");
             return;
-        } else if (mStatus == Status.PAUSE) {
+        } else if (mStatus == StatusTime.PAUSE) {
             resume();
             return;
         }
-        mStatus = Status.RUN;
+        mStatus = StatusTime.RUN;
         running = true;
         paused = false;
         runStartAction();
@@ -129,7 +96,7 @@ public class Alarm implements ITime {
     @Override
     public void pause() {
         Logger.d(TAG, "pause");
-        mStatus = Status.PAUSE;
+        mStatus = StatusTime.PAUSE;
         paused = true;
         runPauseAction();
     }
@@ -137,7 +104,7 @@ public class Alarm implements ITime {
     @Override
     public void stop() {
         Logger.d(TAG, "stop");
-        mStatus = Status.STOP;
+        mStatus = StatusTime.STOP;
         running = false;
         synchronized (pauseLock) {
             paused = false;
@@ -150,28 +117,52 @@ public class Alarm implements ITime {
     @Override
     public void resume() {
         Logger.d(TAG, "resume");
-        mStatus = Status.RUN;
+        mStatus = StatusTime.RUN;
         if (mThread != null) {
             synchronized (pauseLock) {
                 paused = false;
                 pauseLock.notifyAll(); // Unblocks thread
             }
         }
+        runResumeAction();
+    }
+
+    public void addMyTimerActions(@NotNull AlarmCallback actions) {
+        mTimerActions.add(actions);
+    }
+
+    public void removeMyTimerActions(@NotNull AlarmCallback actions) {
+        mTimerActions.remove(actions);
+    }
+
+    public void clearMyTimerActions() {
+        mTimerActions.clear();
     }
 
     @NotNull
-    public Status getStatus() {
+    public StatusTime getStatus() {
         return mStatus;
     }
 
     public void addTime(int s) {
-        mSeconds += s;
         checkTime();
+        mSeconds += s;
     }
 
     public void addAlarm(Time time) {
-        Logger.d(TAG, "Added alarm " + time);
-        mAlarms.add(time);
+        Logger.d(TAG, "addAlarm: time = " + time);
+        if (time == null) return;
+        boolean contains = false;
+        for (Time t : mAlarms) {
+            if (t.equals(time)) {
+                contains = true;
+            }
+        }
+        if (!contains) {
+            mAlarms.add(time);
+        } else {
+            Logger.d(TAG, "addAlarm: time = " + time + " is already contains");
+        }
     }
 
     public void setTime(int h, int m, int s) {
@@ -181,8 +172,8 @@ public class Alarm implements ITime {
         checkTime();
     }
 
-    public void print() {
-        Logger.d(TAG, "MyTimer is [" + mHours + ":" + mMinute + ":" + mSeconds + "]");
+    private void print() {
+        Logger.d(TAG, String.format(TIME_TEXT_FORMAT, "Timer is", mHours, mMinute, mSeconds));
     }
 
     private void stepSleep() {
@@ -196,16 +187,16 @@ public class Alarm implements ITime {
     private void checkAlarm() {
         for (Time t : mAlarms) {
             if (t.equals(new Time(mHours, mMinute, mSeconds))) {
-                for (MyTimerActions actions : mTimerActions) {
-                    actions.alarm();
+                for (AlarmCallback actions : mTimerActions) {
+                    actions.alarm(t);
                 }
+                mAlarms.remove(t);
             }
         }
     }
 
     private boolean checkLastTime() {
-        Logger.d(TAG, "" + mSeconds);
-        if (mHours == 0 && mMinute == 0 && mSeconds == 0) {
+        if (mHours == HOURS_MIN && mMinute == MINUTE_MIN && mSeconds == SECOND_MIN) {
             runEndAction();
             stop();
             return true;
@@ -214,13 +205,16 @@ public class Alarm implements ITime {
     }
 
     private void checkTime() {
-        if (mSeconds < 0) {
+        if (mSeconds < SECOND_MIN) {
             mMinute -= 1;
-            mSeconds = 59;
+            mSeconds = SECOND_MAX;
         }
-        if (mMinute < 0) {
+        if (mMinute < MINUTE_MIN) {
             mHours -= 1;
-            mMinute = 59;
+            mMinute = MINUTE_MAX;
+        }
+        if (mHours < 0) {
+            mHours = HOURS_MIN;
         }
         checkLastTime();
     }
@@ -228,7 +222,7 @@ public class Alarm implements ITime {
     private void runAction() {
         Logger.d(TAG, "runAction");
         if (!mTimerActions.isEmpty()) {
-            for (MyTimerActions actions : mTimerActions) {
+            for (AlarmCallback actions : mTimerActions) {
                 actions.action(new Time(mHours, mMinute, mSeconds));
             }
         }
@@ -237,7 +231,7 @@ public class Alarm implements ITime {
     private void runStartAction() {
         Logger.d(TAG, "runStartAction");
         if (!mTimerActions.isEmpty()) {
-            for (MyTimerActions actions : mTimerActions) {
+            for (AlarmCallback actions : mTimerActions) {
                 actions.startAction();
             }
         }
@@ -246,8 +240,17 @@ public class Alarm implements ITime {
     private void runPauseAction() {
         Logger.d(TAG, "runPauseAction");
         if (!mTimerActions.isEmpty()) {
-            for (MyTimerActions actions : mTimerActions) {
+            for (AlarmCallback actions : mTimerActions) {
                 actions.pauseAction();
+            }
+        }
+    }
+
+    private void runResumeAction() {
+        Logger.d(TAG, "runResumeAction");
+        if (!mTimerActions.isEmpty()) {
+            for (AlarmCallback actions : mTimerActions) {
+                actions.resumeAction();
             }
         }
     }
@@ -255,7 +258,7 @@ public class Alarm implements ITime {
     private void runEndAction() {
         Logger.d(TAG, "runEndAction");
         if (!mTimerActions.isEmpty()) {
-            for (MyTimerActions actions : mTimerActions) {
+            for (AlarmCallback actions : mTimerActions) {
                 actions.endAction();
             }
         }
@@ -264,7 +267,7 @@ public class Alarm implements ITime {
     private void runStopAction() {
         Logger.d(TAG, "runStopAction");
         if (!mTimerActions.isEmpty()) {
-            for (MyTimerActions actions : mTimerActions) {
+            for (AlarmCallback actions : mTimerActions) {
                 actions.stopAction();
             }
         }

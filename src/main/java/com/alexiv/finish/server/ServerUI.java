@@ -1,14 +1,20 @@
 package com.alexiv.finish.server;
 
-import com.alexiv.finish.utils.Time;
-import com.alexiv.utils.Logger;
+import com.alexiv.finish.time.Time;
 
 import javax.swing.*;
+import javax.swing.text.DefaultCaret;
 import java.awt.*;
 
 import static com.alexiv.finish.utils.Constants.TIMER_TEXT_FORMAT;
+import static com.alexiv.finish.utils.Constants.TIME_IS_OVER;
 
 public class ServerUI extends JFrame {
+    private static final String TAG = ServerUI.class.getSimpleName();
+
+    public static void main(String[] args) {
+        new ServerUI();
+    }
 
     private JLabel mTimerLabel;
 
@@ -22,30 +28,37 @@ public class ServerUI extends JFrame {
 
     private JPanel rootPanel;
 
+    private JTextArea mLogTextArea;
+
     private Server mServer;
 
     interface ServerUICallback {
+        void addLog(String log);
         void updateTimer(Time time);
-        void log(String log);
-        void end();
+        void endTimer();
+        void stopTimer();
     }
 
     private ServerUICallback mCallback = new ServerUICallback() {
+        @Override
+        public void addLog(String log) {
+            mLogTextArea.setText(mLogTextArea.getText() + "\n" + log);
+        }
+
         @Override
         public void updateTimer(Time time) {
             mTimerLabel.setText(time.getTime());
         }
 
         @Override
-        public void log(String log) {
-            //no op
+        public void endTimer() {
+            mTimerLabel.setText(TIME_IS_OVER);
+            enabledSliders(true);
         }
 
         @Override
-        public void end() {
-            mHourSlider.setEnabled(true);
-            mMinuteSlider.setEnabled(true);
-            mSecondSlider.setEnabled(true);
+        public void stopTimer() {
+            enabledSliders(true);
         }
     };
 
@@ -54,36 +67,30 @@ public class ServerUI extends JFrame {
         setContentPane(rootPanel);
         setVisible(true);
         setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
-        setSize(1000, 200);
+        setSize(1000, 300);
+
+        DefaultCaret caret = (DefaultCaret) mLogTextArea.getCaret();
+        caret.setUpdatePolicy(DefaultCaret.ALWAYS_UPDATE);
 
         mTimerLabel.setFont(new Font("Serif", Font.BOLD, 23));
-        init();
-    }
 
-    public static void main(String[] args) {
-        new ServerUI();
+        init();
     }
 
     private void init() {
         mServer = new Server(mCallback);
 
         mStartButton.addActionListener(e -> {
-            mHourSlider.setEnabled(false);
-            mMinuteSlider.setEnabled(false);
-            mSecondSlider.setEnabled(false);
+            enabledSliders(false);
             setTime();
             mServer.start();
         });
 
-        mPauseButton.addActionListener(e -> {
-            mServer.pauseResume();
-        });
+        mPauseButton.addActionListener(e -> mServer.pauseResume());
 
         mStopButton.addActionListener(e -> {
-            mHourSlider.setEnabled(true);
-            mMinuteSlider.setEnabled(true);
-            mSecondSlider.setEnabled(true);
             mServer.stop();
+            enabledSliders(true);
         });
 
         mHourSlider.addChangeListener(e -> setTime());
@@ -99,6 +106,12 @@ public class ServerUI extends JFrame {
     private String slidersToText() {
         return String.format(TIMER_TEXT_FORMAT,
                 mHourSlider.getValue(), mMinuteSlider.getValue(), mSecondSlider.getValue());
+    }
+
+    private void enabledSliders(boolean enabled) {
+        mHourSlider.setEnabled(enabled);
+        mMinuteSlider.setEnabled(enabled);
+        mSecondSlider.setEnabled(enabled);
     }
 
     {
@@ -151,8 +164,6 @@ public class ServerUI extends JFrame {
         mSecondSlider.setPaintTicks(true);
         mSecondSlider.setValue(10);
         rootPanel.add(mSecondSlider, new com.intellij.uiDesigner.core.GridConstraints(2, 2, 1, 1, com.intellij.uiDesigner.core.GridConstraints.ANCHOR_WEST, com.intellij.uiDesigner.core.GridConstraints.FILL_HORIZONTAL, com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_WANT_GROW, com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_FIXED, null, null, null, 0, false));
-        final com.intellij.uiDesigner.core.Spacer spacer1 = new com.intellij.uiDesigner.core.Spacer();
-        rootPanel.add(spacer1, new com.intellij.uiDesigner.core.GridConstraints(4, 0, 1, 3, com.intellij.uiDesigner.core.GridConstraints.ANCHOR_CENTER, com.intellij.uiDesigner.core.GridConstraints.FILL_VERTICAL, 1, com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_WANT_GROW, null, null, null, 0, false));
         mPauseButton = new JButton();
         mPauseButton.setText("Pause/Resume");
         rootPanel.add(mPauseButton, new com.intellij.uiDesigner.core.GridConstraints(3, 1, 1, 1, com.intellij.uiDesigner.core.GridConstraints.ANCHOR_CENTER, com.intellij.uiDesigner.core.GridConstraints.FILL_HORIZONTAL, com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_CAN_SHRINK | com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_CAN_GROW, com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_FIXED, null, null, null, 0, false));
@@ -165,6 +176,11 @@ public class ServerUI extends JFrame {
         final JLabel label3 = new JLabel();
         label3.setText("Seconds");
         rootPanel.add(label3, new com.intellij.uiDesigner.core.GridConstraints(1, 2, 1, 1, com.intellij.uiDesigner.core.GridConstraints.ANCHOR_CENTER, com.intellij.uiDesigner.core.GridConstraints.FILL_NONE, com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_FIXED, com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_FIXED, null, null, null, 0, false));
+        final JScrollPane scrollPane1 = new JScrollPane();
+        rootPanel.add(scrollPane1, new com.intellij.uiDesigner.core.GridConstraints(4, 0, 1, 3, com.intellij.uiDesigner.core.GridConstraints.ANCHOR_CENTER, com.intellij.uiDesigner.core.GridConstraints.FILL_BOTH, com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_CAN_SHRINK | com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_WANT_GROW, com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_CAN_SHRINK | com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_WANT_GROW, null, null, null, 0, false));
+        mLogTextArea = new JTextArea();
+        mLogTextArea.setEditable(false);
+        scrollPane1.setViewportView(mLogTextArea);
     }
 
     /**

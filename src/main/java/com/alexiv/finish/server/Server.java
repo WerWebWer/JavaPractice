@@ -1,71 +1,114 @@
 package com.alexiv.finish.server;
 
-import com.alexiv.finish.utils.Alarm;
-import com.alexiv.finish.utils.Time;
-import com.alexiv.utils.Logger;
+import com.alexiv.finish.time.Alarm;
+import com.alexiv.finish.time.AlarmCallback;
+import com.alexiv.finish.time.Time;
+import com.alexiv.finish.utils.Logger;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.LinkedList;
 
-import static com.alexiv.finish.utils.Constants.ALARM;
-import static com.alexiv.finish.utils.Constants.PORT;
+import static com.alexiv.finish.utils.Constants.*;
 
 public class Server {
     private static final String TAG = Server.class.getSimpleName();
 
     private final Alarm mMyTimer = new Alarm();
 
-    public static LinkedList<ServerLogic> serverList = new LinkedList<>(); // список всех нитей
-    public static LinkedList<ServerLogic.ServerLogicCallback> serverCallback = new LinkedList<>();
+    public static LinkedList<ServerLogic> serverList = new LinkedList<>();
 
-    private ServerCallback mCallback = time -> mMyTimer.addAlarm(time);
-    private ServerUI.ServerUICallback mUICallback;
+    interface ServerCallback {
+        void parseMsg(String msg);
+    }
 
-    private Alarm.MyTimerActions mTimerCallback = new Alarm.MyTimerActions() {
+    private final ServerCallback mCallback = msg -> {
+        String arg = msg.substring(0, 1);
+        String text = msg.substring(2);
+        switch (arg) {
+            case SOCKET_ARG_ALARM:
+                sendAndSetLogs("Set new alarm " + text);
+                mMyTimer.addAlarm(new Time(text));
+                break;
+            case SOCKET_ARG_CONNECT:
+                sendAndSetLogs("New connection " + text);
+                break;
+            case SOCKET_ARG_LOG:
+            case SOCKET_ARG_TIME:
+            case SOCKET_ARG_MSG:
+                // no op
+                break;
+            default:
+                Logger.d(TAG, "parseMsg: other arg: msg = " + msg);
+                break;
+        }
+    };
+
+    private final ServerUI.ServerUICallback mUICallback;
+    private final AlarmCallback mTimerCallback = new AlarmCallback() {
         @Override
         public void action(Time time) {
             mUICallback.updateTimer(time);
-            for(ServerLogic.ServerLogicCallback callback : serverCallback) {
-                callback.action(time);
+            sendAndSetLogs(time.getTime());
+            for(ServerLogic serverLogic : serverList) {
+                serverLogic.sendTime(time.getTime());
             }
         }
 
         @Override
         public void startAction() {
-            //no op
+            sendAndSetLogs("Timer is start");
         }
 
         @Override
         public void pauseAction() {
-            //no op
+            sendAndSetLogs("Timer is pause");
+        }
+
+        @Override
+        public void resumeAction() {
+            sendAndSetLogs("Timer is resume");
         }
 
         @Override
         public void stopAction() {
-            mUICallback.end();
+            sendAndSetLogs("Timer is stop");
+            mUICallback.stopTimer();
         }
 
         @Override
         public void endAction() {
-            mUICallback.end();
+            sendAndSetLogs("Timer is end");
+            mUICallback.endTimer();
+            for(ServerLogic serverLogic : serverList) {
+                serverLogic.sendTime(TIME_IS_OVER);
+            }
         }
 
         @Override
-        public void alarm() {
-            for(ServerLogic.ServerLogicCallback callback : serverCallback) {
-                callback.alarm();
+        public void alarm(Time time) {
+            sendAndSetLogs("Alarm " + time.getTime());
+            for(ServerLogic serverLogic : serverList) {
+                serverLogic.sendAlarm(time.getTime());
             }
         }
     };
 
-    interface ServerCallback {
-        void addAlarm(Time time);
+    private void sendAndSetLogs(@Nullable String text) {
+        String time = new SimpleDateFormat("HH:mm:ss").format(new Date());
+        String msg = "(" + time + ") " + text;
+        mUICallback.addLog(msg);
+        for(ServerLogic serverLogic : serverList) {
+            serverLogic.sendLogs(msg);
+        }
     }
 
-    public Server(ServerUI.ServerUICallback callback) {
+    public Server(@NotNull ServerUI.ServerUICallback callback) {
         mUICallback = callback;
         mMyTimer.addMyTimerActions(mTimerCallback);
         Thread thread = new Thread(() -> {
@@ -77,7 +120,6 @@ public class Server {
                         try {
                             ServerLogic sl = new ServerLogic(socket);
                             sl.setCallback(mCallback);
-                            serverCallback.add(sl.getActionCallback());
                             serverList.add(sl); // добавить новое соединенние в список
                         } catch (IOException e) {
                             socket.close();
@@ -116,42 +158,19 @@ public class Server {
 class ServerLogic extends Thread {
     private static final String TAG = ServerLogic.class.getSimpleName();
 
-    private BufferedReader mIn; // поток чтения из сокета
-    private BufferedWriter mOut; // поток записи в сокет
+    @NotNull
+    private final BufferedReader mIn; // поток чтения из сокета
+    @NotNull
+    private final BufferedWriter mOut; // поток записи в сокет
 
     @Nullable
     private Server.ServerCallback mCallback = null;
 
-    private ServerLogicCallback mActionCallback = new ServerLogicCallback() {
-        @Override
-        public void alarm() {
-            send(ALARM);
-        }
-
-        @Override
-        public void action(Time time) {
-            send(time.getTime());
-        }
-    };
-
-    interface ServerLogicCallback {
-        void alarm();
-        void action(Time time);
-    }
-
-    public ServerLogic(Socket socket) throws IOException {
+    public ServerLogic(@NotNull Socket socket) throws IOException {
         Logger.d(TAG, "new ServerLogic");
         mIn = new BufferedReader(new InputStreamReader(socket.getInputStream()));
         mOut = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
         start();
-    }
-
-    public void setCallback(Server.ServerCallback callback) {
-        mCallback = callback;
-    }
-
-    public ServerLogicCallback getActionCallback() {
-        return mActionCallback;
     }
 
     @Override
@@ -160,24 +179,34 @@ class ServerLogic extends Thread {
         try {
             while (true) {
                 word = mIn.readLine();
-                Logger.d(TAG, "Get " + word);
-                if(word.equals("stop")) {
-                    break;
-                }
+                Logger.d(TAG, "ServerLogic: " + word);
                 if (mCallback != null) {
-                    if (word.contains(":")) {
-                        Time alarm = new Time(word.split(" ")[1]);
-                        Logger.d(TAG, "Set new alarm is " + alarm.getTime());
-                        mCallback.addAlarm(alarm);
-                        for (ServerLogic vr : Server.serverList) {
-                            vr.send("Add new alarm " + alarm.getTime());
-                        }
-                    }
+                    mCallback.parseMsg(word);
                 }
             }
         } catch (IOException e) {
             Logger.d(TAG, "Same IOException");
         }
+    }
+
+    public void setCallback(Server.ServerCallback callback) {
+        mCallback = callback;
+    }
+
+    public void sendTime(String text) {
+        send(SOCKET_ARG_TIME + " " + text);
+    }
+
+    public void sendLogs(String text) {
+        send(SOCKET_ARG_LOG + " " + text);
+    }
+
+    public void sendAlarm(String text) {
+        send(SOCKET_ARG_ALARM + " " + text);
+    }
+
+    public void sendMsg(String msg) {
+        send(SOCKET_ARG_MSG + " " + msg);
     }
 
     private void send(String msg) {

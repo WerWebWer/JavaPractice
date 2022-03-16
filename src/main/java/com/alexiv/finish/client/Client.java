@@ -1,15 +1,11 @@
 package com.alexiv.finish.client;
 
-import com.alexiv.finish.server.Server;
-import com.alexiv.finish.utils.Time;
-import com.alexiv.utils.Logger;
+import com.alexiv.finish.time.Time;
+import com.alexiv.finish.utils.Logger;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.io.*;
 import java.net.Socket;
-import java.text.SimpleDateFormat;
-import java.util.Date;
 
 import static com.alexiv.finish.utils.Constants.*;
 
@@ -17,85 +13,64 @@ public class Client {
     private static final String TAG = Client.class.getSimpleName();
 
     @NotNull
-    private ClientUI.ClientUICallback mUICallback;
+    private final String mId;
     @NotNull
-    private ClientLogic clientLogic;
-
-    interface ClientCallback {
-        void getMessage(String msg);
-        void exit();
-    }
-
-    private ClientCallback mCallback = new ClientCallback() {
-        @Override
-        public void getMessage(String msg) {
-            Logger.d(TAG, "ClientCallback: " + msg);
-            mUICallback.log(msg);
-            // TODO
-
-        }
-
-        @Override
-        public void exit() {
-            mUICallback.exit();
-        }
-    };
-
-    public Client(@NotNull ClientUI.ClientUICallback callback) {
-        mUICallback = callback;
-        clientLogic = new ClientLogic(IP_ADDRESS, PORT, mCallback);
-    }
-
-    public void setAlarm(@NotNull Time time) {
-        Logger.d(TAG, "send alarm " + time.getTime());
-        clientLogic.sendNewAlarm(time);
-    }
-}
-
-class ClientLogic {
-    private static final String TAG = ClientLogic.class.getSimpleName();
+    private final ClientUI.ClientUICallback mUICallback;
 
     private Socket mSocket;
     private BufferedReader mIn; // поток чтения из сокета
     private BufferedWriter mOut; // поток чтения в сокет
-    private BufferedReader mInputUser; // поток чтения с консоли
 
-    @NotNull
-    private final String mId;
-
-    @Nullable
-    private Client.ClientCallback mCallback = null;
-
-    public ClientLogic(String address, int port, Client.ClientCallback callback) {
+    public Client(@NotNull ClientUI.ClientUICallback callback) {
+        Logger.d(TAG, "constructor");
+        mUICallback = callback;
         mId = new Object().toString().split("@")[1];
-        setCallbackMsg(callback);
+        mUICallback.setId(mId);
         try {
-            mSocket = new Socket(address, port);
-            mInputUser = new BufferedReader(new InputStreamReader(System.in));
+            mSocket = new Socket(IP_ADDRESS, PORT);
             mIn = new BufferedReader(new InputStreamReader(mSocket.getInputStream()));
             mOut = new BufferedWriter(new OutputStreamWriter(mSocket.getOutputStream()));
-            setIdClient();
+
+            send(SOCKET_ARG_CONNECT + " " + mId);
+
             new ReadMsg().start(); // нить читающая сообщения из сокета в бесконечном цикле
-            new WriteMsg().start(); // нить пишущая сообщения в сокет приходящие с консоли в бесконечном цикле
         } catch (IOException e) {
-            Logger.d(TAG, "Constructor failed");
-            ClientLogic.this.downService();
+            Logger.d(TAG, "constructor failed");
+            downService();
         }
     }
 
-    public void setCallbackMsg(Client.ClientCallback callback) {
-        mCallback = callback;
+    public void setAlarm(@NotNull Time time) {
+        Logger.d(TAG, "setAlarm: " + time.getTime());
+        send(SOCKET_ARG_ALARM + " " + time.getTime());
     }
 
-    public void sendNewAlarm(@NotNull Time time) {
-        send(String.format(SEND_TIMER_FORMAT, mId, time.getTime()));
-    }
-
-    private void setIdClient() {
-        send("Connect " + mId + "\n");
+    private void parseMsg(String msg) {
+        Logger.d(TAG, "parseMsg: " + msg);
+        String arg = msg.substring(0, 1);
+        String text = msg.substring(2);
+        switch (arg) {
+            case SOCKET_ARG_LOG:
+                mUICallback.log(text);
+                break;
+            case SOCKET_ARG_ALARM:
+                mUICallback.alarm();
+                break;
+            case SOCKET_ARG_TIME:
+                mUICallback.time(new Time(text));
+                break;
+            case SOCKET_ARG_CONNECT:
+            case SOCKET_ARG_MSG:
+                // no op
+                break;
+            default:
+                Logger.d(TAG, "parseMsg: other arg: msg = " + msg);
+                break;
+        }
     }
 
     private void downService() {
+        Logger.d(TAG, "downService");
         try {
             if (mSocket != null && !mSocket.isClosed()) {
                 mSocket.close();
@@ -103,14 +78,15 @@ class ClientLogic {
                 mOut.close();
             }
         } catch (IOException ignored) {
+            Logger.d(TAG, "downService: IOException");
         }
-        mCallback.exit();
+        mUICallback.exit();
     }
 
     private void send(@NotNull String text) {
+        Logger.d(TAG, "send: " + text);
         try {
-            Logger.d(TAG, "send: " + text);
-            mOut.write(text);
+            mOut.write(text + "\n");
             mOut.flush();
         } catch (IOException ignored) {
             Logger.d(TAG, "send: IOException");
@@ -126,38 +102,10 @@ class ClientLogic {
                 while (true) {
                     str = mIn.readLine();
                     Logger.d(TAG, "ReadMsg: " + str);
-                    if (str.equals("stop")) {
-                        ClientLogic.this.downService();
-                        break;
-                    }
-                    mCallback.getMessage(str);
+                    parseMsg(str);
                 }
             } catch (IOException e) {
-                ClientLogic.this.downService();
-            }
-        }
-    }
-
-    // нить отправляющая сообщения приходящие с консоли на сервер
-    public class WriteMsg extends Thread {
-        @Override
-        public void run() {
-            while (true) {
-                String userWord;
-                try {
-                    String time = new SimpleDateFormat("HH:mm:ss").format(new Date()); // время
-                    userWord = mInputUser.readLine(); // сообщения с консоли
-                    if (userWord.equals("stop")) {
-                        mOut.write("stop" + "\n");
-                        ClientLogic.this.downService();
-                        break;
-                    } else {
-                        mOut.write("(" + time + ") " + mId + ": " + userWord + "\n"); // отправляем на сервер
-                    }
-                    mOut.flush();
-                } catch (IOException e) {
-                    ClientLogic.this.downService();
-                }
+                downService();
             }
         }
     }

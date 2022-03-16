@@ -1,16 +1,19 @@
-package com.alexiv.finish.utils;
+package com.alexiv.finish.time;
 
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import static com.alexiv.finish.utils.Constants.TIMER_TEXT_FORMAT;
 
 public class Time {
+    private static final String TAG = Time.class.getSimpleName();
+
     private int _h = 0;
     private int _m = 0;
     private int _s = 0;
 
     public Time() {}
-    public Time(Time t) {
+    public Time(@Nullable Time t) {
         if (t != null) {
             _h = t.getHour();
             _m = t.getMinute();
@@ -56,6 +59,7 @@ public class Time {
 
     public void setTime(@NotNull String t) {
         String[] arr = t.split(":");
+        if (arr.length != 3) return;
         _h = Integer.parseInt(arr[0]);
         _m = Integer.parseInt(arr[1]);
         _s = Integer.parseInt(arr[2]);

@@ -1,12 +1,15 @@
 package com.alexiv.finish.client;
 
-import com.alexiv.finish.utils.Time;
-import com.alexiv.utils.Logger;
+import com.alexiv.finish.time.Time;
+import com.alexiv.finish.utils.Logger;
+import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
+import javax.swing.text.DefaultCaret;
 import java.awt.*;
 
 public class ClientUI extends JFrame {
+    private static final String TAG = ClientUI.class.getSimpleName();
 
     public static void main(String[] args) {
         new ClientUI();
@@ -15,27 +18,36 @@ public class ClientUI extends JFrame {
     private JPanel rootPanel;
 
     private JLabel mTimeLabel;
-    private JLabel mLogLabel;
 
     private JSpinner mHourSpinner;
     private JSpinner mMinuteSpinner;
     private JSpinner mSecondSpinner;
 
     private JButton mAddAlarmButton;
+    private JTextArea mLogTextArea;
+    private JScrollPane mLogScrollPanel;
 
+    @NotNull
     private Client mClient;
 
     interface ClientUICallback {
+        void setId(@NotNull String id);
         void alarm();
         void time(Time time);
         void log(String text);
         void exit();
     }
 
+    @NotNull
     private ClientUICallback mCallback = new ClientUICallback() {
         @Override
+        public void setId(@NotNull String id) {
+            setTitle("Client " + id);
+        }
+
+        @Override
         public void alarm() {
-            mTimeLabel.setText("ALARM!!!");
+            mTimeLabel.setText("ALARM");
         }
 
         @Override
@@ -45,12 +57,13 @@ public class ClientUI extends JFrame {
 
         @Override
         public void log(String text) {
-            mLogLabel.setText(text);
+            String oldText = mLogTextArea.getText() + "\n";
+            mLogTextArea.setText(oldText + text);
         }
 
         @Override
         public void exit() {
-            Logger.d("Client cannot connect to socket");
+            Logger.d("Client cannot connect to server by socket");
             dispose();
         }
     };
@@ -60,7 +73,7 @@ public class ClientUI extends JFrame {
         setContentPane(rootPanel);
         setVisible(true);
         setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
-        setSize(500, 200);
+        setSize(500, 300);
 
         init();
     }
@@ -70,16 +83,18 @@ public class ClientUI extends JFrame {
 
         mTimeLabel.setFont(new Font("Serif", Font.BOLD, 23));
 
+        DefaultCaret caret = (DefaultCaret) mLogTextArea.getCaret();
+        caret.setUpdatePolicy(DefaultCaret.ALWAYS_UPDATE);
+
         mHourSpinner.setModel(new SpinnerNumberModel(0, 0, 24, 1));
         mMinuteSpinner.setModel(new SpinnerNumberModel(0, 0, 60, 1));
         mSecondSpinner.setModel(new SpinnerNumberModel(5, 0, 60, 1));
 
-        mAddAlarmButton.addActionListener(e -> {
-            mClient.setAlarm(new Time(
-                    (Integer) mHourSpinner.getValue(),
-                    (Integer) mMinuteSpinner.getValue(),
-                    (Integer) mSecondSpinner.getValue()));
-        });
+        mAddAlarmButton.addActionListener(e -> mClient.setAlarm(new Time(
+                (Integer) mHourSpinner.getValue(),
+                (Integer) mMinuteSpinner.getValue(),
+                (Integer) mSecondSpinner.getValue()))
+        );
     }
 
     {
@@ -98,15 +113,10 @@ public class ClientUI extends JFrame {
      */
     private void $$$setupUI$$$() {
         rootPanel = new JPanel();
-        rootPanel.setLayout(new com.intellij.uiDesigner.core.GridLayoutManager(5, 3, new Insets(0, 0, 0, 0), -1, -1));
+        rootPanel.setLayout(new com.intellij.uiDesigner.core.GridLayoutManager(4, 3, new Insets(0, 0, 0, 0), -1, -1));
         mTimeLabel = new JLabel();
         mTimeLabel.setText("Label");
         rootPanel.add(mTimeLabel, new com.intellij.uiDesigner.core.GridConstraints(0, 0, 1, 3, com.intellij.uiDesigner.core.GridConstraints.ANCHOR_CENTER, com.intellij.uiDesigner.core.GridConstraints.FILL_NONE, com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_FIXED, com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_FIXED, null, null, null, 0, false));
-        mLogLabel = new JLabel();
-        mLogLabel.setText("Label");
-        rootPanel.add(mLogLabel, new com.intellij.uiDesigner.core.GridConstraints(3, 0, 1, 3, com.intellij.uiDesigner.core.GridConstraints.ANCHOR_WEST, com.intellij.uiDesigner.core.GridConstraints.FILL_NONE, com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_FIXED, com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_FIXED, null, null, null, 0, false));
-        final com.intellij.uiDesigner.core.Spacer spacer1 = new com.intellij.uiDesigner.core.Spacer();
-        rootPanel.add(spacer1, new com.intellij.uiDesigner.core.GridConstraints(4, 2, 1, 1, com.intellij.uiDesigner.core.GridConstraints.ANCHOR_CENTER, com.intellij.uiDesigner.core.GridConstraints.FILL_VERTICAL, 1, com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_WANT_GROW, null, null, null, 0, false));
         mSecondSpinner = new JSpinner();
         rootPanel.add(mSecondSpinner, new com.intellij.uiDesigner.core.GridConstraints(1, 2, 1, 1, com.intellij.uiDesigner.core.GridConstraints.ANCHOR_WEST, com.intellij.uiDesigner.core.GridConstraints.FILL_HORIZONTAL, com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_WANT_GROW, com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_FIXED, null, null, null, 0, false));
         mMinuteSpinner = new JSpinner();
@@ -117,6 +127,12 @@ public class ClientUI extends JFrame {
         mAddAlarmButton.setLabel("Add Alarm");
         mAddAlarmButton.setText("Add Alarm");
         rootPanel.add(mAddAlarmButton, new com.intellij.uiDesigner.core.GridConstraints(2, 0, 1, 3, com.intellij.uiDesigner.core.GridConstraints.ANCHOR_CENTER, com.intellij.uiDesigner.core.GridConstraints.FILL_HORIZONTAL, com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_CAN_SHRINK | com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_CAN_GROW, com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_FIXED, null, null, null, 0, false));
+        mLogScrollPanel = new JScrollPane();
+        rootPanel.add(mLogScrollPanel, new com.intellij.uiDesigner.core.GridConstraints(3, 0, 1, 3, com.intellij.uiDesigner.core.GridConstraints.ANCHOR_CENTER, com.intellij.uiDesigner.core.GridConstraints.FILL_BOTH, com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_CAN_SHRINK | com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_WANT_GROW, com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_CAN_SHRINK | com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_WANT_GROW, null, null, null, 0, false));
+        mLogTextArea = new JTextArea();
+        mLogTextArea.setEditable(false);
+        mLogTextArea.setEnabled(true);
+        mLogScrollPanel.setViewportView(mLogTextArea);
     }
 
     /**
