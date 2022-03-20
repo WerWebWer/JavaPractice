@@ -10,5 +10,5 @@ public interface AlarmCallback {
 
     void endAction(); // when time is end - 0:0:0
 
-    void alarm(Time time);
+    void alarm(Time time, String action);
 }

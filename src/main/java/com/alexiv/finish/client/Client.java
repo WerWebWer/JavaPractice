@@ -3,6 +3,7 @@ package com.alexiv.finish.client;
 import com.alexiv.finish.time.Time;
 import com.alexiv.finish.utils.Logger;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.*;
 import java.net.Socket;
@@ -27,7 +28,7 @@ public class Client {
         mId = new Object().toString().split("@")[1];
         mUICallback.setId(mId);
         try {
-            mSocket = new Socket(IP_ADDRESS, PORT);
+            mSocket = new Socket(IP_ADDRESS_CAST, PORT);
             mIn = new BufferedReader(new InputStreamReader(mSocket.getInputStream()));
             mOut = new BufferedWriter(new OutputStreamWriter(mSocket.getOutputStream()));
 
@@ -40,9 +41,9 @@ public class Client {
         }
     }
 
-    public void setAlarm(@NotNull Time time) {
+    public void setAlarm(@NotNull Time time, @Nullable String alarmText) {
         Logger.d(TAG, "setAlarm: " + time.getTime());
-        send(SOCKET_ARG_ALARM + " " + time.getTime());
+        send(SOCKET_ARG_ALARM + " " + time.getTime() + " " + alarmText);
     }
 
     private void parseMsg(String msg) {
@@ -54,12 +55,13 @@ public class Client {
                 mUICallback.log(text);
                 break;
             case SOCKET_ARG_ALARM:
-                mUICallback.alarm();
+                mUICallback.alarm(text);
                 break;
             case SOCKET_ARG_TIME:
                 mUICallback.time(new Time(text));
                 break;
             case SOCKET_ARG_CONNECT:
+            case SOCKET_ARG_DISCONNECT:
             case SOCKET_ARG_MSG:
                 // no op
                 break;

@@ -17,7 +17,7 @@ public class Alarm implements ITime {
     @NotNull
     private final List<AlarmCallback> mTimerActions = new ArrayList<>();
     @NotNull
-    private final List<Time> mAlarms = new ArrayList<>();
+    private final ArrayList<Data> mAlarms = new ArrayList<>();
 
     private StatusTime mStatus = StatusTime.STOP;
 
@@ -127,15 +127,15 @@ public class Alarm implements ITime {
         runResumeAction();
     }
 
-    public void addMyTimerActions(@NotNull AlarmCallback actions) {
+    public void addAlarmCallback(@NotNull AlarmCallback actions) {
         mTimerActions.add(actions);
     }
 
-    public void removeMyTimerActions(@NotNull AlarmCallback actions) {
+    public void removeAlarmCallback(@NotNull AlarmCallback actions) {
         mTimerActions.remove(actions);
     }
 
-    public void clearMyTimerActions() {
+    public void clearAlarmCallback() {
         mTimerActions.clear();
     }
 
@@ -149,19 +149,20 @@ public class Alarm implements ITime {
         mSeconds += s;
     }
 
-    public void addAlarm(Time time) {
-        Logger.d(TAG, "addAlarm: time = " + time);
+    public void addAlarm(@NotNull Time time, @Nullable String alarmText) {
+        Logger.d(TAG, "addAlarm: time = " + time.getTime());
         if (time == null) return;
         boolean contains = false;
-        for (Time t : mAlarms) {
-            if (t.equals(time)) {
+        for (Data data : mAlarms) {
+            if (data.getTime().equals(time)) {
                 contains = true;
+                Logger.d(TAG, "addAlarm: alarm already is " + time.getTime() + " add action =  " + alarmText);
+                data.addAction(alarmText);
             }
         }
         if (!contains) {
-            mAlarms.add(time);
-        } else {
-            Logger.d(TAG, "addAlarm: time = " + time + " is already contains");
+            Logger.d(TAG, "addAlarm: " + time.getTime() + " = " + alarmText);
+            mAlarms.add(new Data(time, alarmText));
         }
     }
 
@@ -185,12 +186,14 @@ public class Alarm implements ITime {
     }
 
     private void checkAlarm() {
-        for (Time t : mAlarms) {
-            if (t.equals(new Time(mHours, mMinute, mSeconds))) {
+        Time now = new Time(mHours, mMinute, mSeconds);
+        for (Data data : mAlarms) {
+            if (data.getTime().equals(now)) {
                 for (AlarmCallback actions : mTimerActions) {
-                    actions.alarm(t);
+                    actions.alarm(data.getTime(), data.getAction());
                 }
-                mAlarms.remove(t);
+                mAlarms.remove(data);
+                return;
             }
         }
     }

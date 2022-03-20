@@ -28,15 +28,25 @@ public class Server {
     }
 
     private final ServerCallback mCallback = msg -> {
+        Logger.d(TAG, "ServerCallback: " + msg);
+        if (msg == null) {
+            Logger.d(TAG, "ServerCallback: msg is null");
+            return;
+        }
         String arg = msg.substring(0, 1);
         String text = msg.substring(2);
         switch (arg) {
             case SOCKET_ARG_ALARM:
                 sendAndSetLogs("Set new alarm " + text);
-                mMyTimer.addAlarm(new Time(text));
+                String time = text.substring(0, text.indexOf(" "));
+                String alarmText = text.substring(text.indexOf(" ") + 1);
+                mMyTimer.addAlarm(new Time(time), alarmText);
                 break;
             case SOCKET_ARG_CONNECT:
                 sendAndSetLogs("New connection " + text);
+                break;
+            case SOCKET_ARG_DISCONNECT:
+                sendAndSetLogs("Disconnection " + text);
                 break;
             case SOCKET_ARG_LOG:
             case SOCKET_ARG_TIME:
@@ -91,10 +101,10 @@ public class Server {
         }
 
         @Override
-        public void alarm(Time time) {
-            sendAndSetLogs("Alarm " + time.getTime());
+        public void alarm(Time time, String action) {
+            sendAndSetLogs("Alarm " + time.getTime() + " " + action);
             for(ServerLogic serverLogic : serverList) {
-                serverLogic.sendAlarm(time.getTime());
+                serverLogic.sendAlarm(time.getTime() + " " + action);
             }
         }
     };
@@ -110,7 +120,7 @@ public class Server {
 
     public Server(@NotNull ServerUI.ServerUICallback callback) {
         mUICallback = callback;
-        mMyTimer.addMyTimerActions(mTimerCallback);
+        mMyTimer.addAlarmCallback(mTimerCallback);
         Thread thread = new Thread(() -> {
             try {
                 ServerSocket server = new ServerSocket(PORT);

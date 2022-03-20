@@ -1,4 +1,4 @@
-package com.alexiv.utils;
+package com.alexiv.finish.time;
 
 public interface ITime {
     void start();
